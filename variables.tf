@@ -210,7 +210,7 @@ variable "public_ip_sku" {
 variable "remote_port" {
   description = "Remote tcp port to be used for access to the vms created via the nsg applied to the nics."
   type        = string
-  default     = ""
+  default     = "22"
 }
 
 variable "source_address_prefixes" {
