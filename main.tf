@@ -49,16 +49,14 @@ moved {
 }
 
 resource "azurerm_virtual_machine" "vm_linux" {
-  count = !contains(tolist([
-    var.vm_os_simple, var.vm_os_offer
-  ]), "WindowsServer") && !var.is_windows_image ? var.nb_instances : 0
+  count = !local.is_windows ? var.nb_instances : 0
 
   location                         = local.location
-  name                             = "${var.vm_hostname}-vmLinux-${count.index}"
+  name                             = replace(replace(var.name_template_vm_linux, "$${vm_hostname}", var.vm_hostname), "$${host_number}", count.index)
   network_interface_ids            = [element(azurerm_network_interface.vm[*].id, count.index)]
   resource_group_name              = var.resource_group_name
   vm_size                          = var.vm_size
-  availability_set_id              = var.zone == null ? azurerm_availability_set.vm[0].id : null
+  availability_set_id              = try(azurerm_availability_set.vm[0].id, null)
   delete_data_disks_on_termination = var.delete_data_disks_on_termination
   delete_os_disk_on_termination    = var.delete_os_disk_on_termination
   tags                             = var.tags
@@ -66,7 +64,7 @@ resource "azurerm_virtual_machine" "vm_linux" {
 
   storage_os_disk {
     create_option     = "FromImage"
-    name              = "osdisk-${var.vm_hostname}-${count.index}"
+    name              = replace(replace(var.name_template_vm_linux_os_disk, "$${vm_hostname}", var.vm_hostname), "$${host_number}", count.index)
     caching           = "ReadWrite"
     disk_size_gb      = var.storage_os_disk_size_gb
     managed_disk_type = var.storage_account_type
@@ -131,29 +129,29 @@ resource "azurerm_virtual_machine" "vm_linux" {
     for_each = var.is_marketplace_image ? ["plan"] : []
 
     content {
-      name      = var.vm_os_offer
-      product   = var.vm_os_sku
+      name      = var.vm_os_sku
+      product   = var.vm_os_offer
       publisher = var.vm_os_publisher
     }
   }
   dynamic "storage_data_disk" {
-    for_each = range(var.nb_data_disk)
+    for_each = local.nested_data_disk_list
 
     content {
       create_option     = "Empty"
       lun               = storage_data_disk.value
-      name              = "${var.vm_hostname}-datadisk-${count.index}-${storage_data_disk.value}"
+      name              = replace(replace(replace(var.name_template_data_disk, "$${vm_hostname}", var.vm_hostname), "$${host_number}", count.index), "$${data_disk_number}", storage_data_disk.value)
       disk_size_gb      = var.data_disk_size_gb
       managed_disk_type = var.data_sa_type
     }
   }
   dynamic "storage_data_disk" {
-    for_each = var.extra_disks
+    for_each = local.nested_extra_data_disk_list
 
     content {
       create_option     = "Empty"
       lun               = storage_data_disk.key + var.nb_data_disk
-      name              = "${var.vm_hostname}-extradisk-${count.index}-${storage_data_disk.value.name}"
+      name              = replace(replace(replace(var.name_template_extra_disk, "$${vm_hostname}", var.vm_hostname), "$${host_number}", count.index), "$${extra_disk_name}", storage_data_disk.value.name)
       disk_size_gb      = storage_data_disk.value.size
       managed_disk_type = var.data_sa_type
     }
@@ -171,6 +169,10 @@ resource "azurerm_virtual_machine" "vm_linux" {
       condition     = !var.is_marketplace_image || (var.vm_os_offer != null && var.vm_os_publisher != null && var.vm_os_sku != null)
       error_message = "`var.vm_os_offer`, `vm_os_publisher` and `var.vm_os_sku` are required when `var.is_marketplace_image` is `true`."
     }
+    precondition {
+      condition     = var.nested_data_disks || var.delete_data_disks_on_termination != true
+      error_message = "`var.nested_data_disks` must be `true` when `var.delete_data_disks_on_termination` is `true`, because when you declare data disks via separate managed disk resource, you might want to preserve the data while recreating the vm instance."
+    }
   }
 }
 
@@ -180,16 +182,14 @@ moved {
 }
 
 resource "azurerm_virtual_machine" "vm_windows" {
-  count = (var.is_windows_image || contains(tolist([
-    var.vm_os_simple, var.vm_os_offer
-  ]), "WindowsServer")) ? var.nb_instances : 0
+  count = local.is_windows ? var.nb_instances : 0
 
   location                      = local.location
-  name                          = "${var.vm_hostname}-vmWindows-${count.index}"
+  name                          = replace(replace(var.name_template_vm_windows, "$${vm_hostname}", var.vm_hostname), "$${host_number}", count.index)
   network_interface_ids         = [element(azurerm_network_interface.vm[*].id, count.index)]
   resource_group_name           = var.resource_group_name
   vm_size                       = var.vm_size
-  availability_set_id           = var.zone == null ? azurerm_availability_set.vm[0].id : null
+  availability_set_id           = try(azurerm_availability_set.vm[0].id, null)
   delete_os_disk_on_termination = var.delete_os_disk_on_termination
   license_type                  = var.license_type
   tags                          = var.tags
@@ -197,7 +197,7 @@ resource "azurerm_virtual_machine" "vm_windows" {
 
   storage_os_disk {
     create_option     = "FromImage"
-    name              = "${var.vm_hostname}-osdisk-${count.index}"
+    name              = replace(replace(var.name_template_vm_windows_os_disk, "$${vm_hostname}", var.vm_hostname), "$${host_number}", count.index)
     caching           = "ReadWrite"
     disk_size_gb      = var.storage_os_disk_size_gb
     managed_disk_type = var.storage_account_type
@@ -245,29 +245,29 @@ resource "azurerm_virtual_machine" "vm_windows" {
     for_each = var.is_marketplace_image ? ["plan"] : []
 
     content {
-      name      = var.vm_os_offer
-      product   = var.vm_os_sku
+      name      = var.vm_os_sku
+      product   = var.vm_os_offer
       publisher = var.vm_os_publisher
     }
   }
   dynamic "storage_data_disk" {
-    for_each = range(var.nb_data_disk)
+    for_each = local.nested_data_disk_list
 
     content {
       create_option     = "Empty"
       lun               = storage_data_disk.value
-      name              = "${var.vm_hostname}-datadisk-${count.index}-${storage_data_disk.value}"
+      name              = replace(replace(replace(var.name_template_data_disk, "$${vm_hostname}", var.vm_hostname), "$${host_number}", count.index), "$${data_disk_number}", storage_data_disk.value)
       disk_size_gb      = var.data_disk_size_gb
       managed_disk_type = var.data_sa_type
     }
   }
   dynamic "storage_data_disk" {
-    for_each = var.extra_disks
+    for_each = local.nested_extra_data_disk_list
 
     content {
       create_option     = "Empty"
       lun               = storage_data_disk.key + var.nb_data_disk
-      name              = "${var.vm_hostname}-extradisk-${count.index}-${storage_data_disk.value.name}"
+      name              = replace(replace(replace(var.name_template_extra_disk, "$${vm_hostname}", var.vm_hostname), "$${host_number}", count.index), "$${extra_disk_name}", storage_data_disk.value.name)
       disk_size_gb      = storage_data_disk.value.size
       managed_disk_type = var.data_sa_type
     }
@@ -285,14 +285,80 @@ resource "azurerm_virtual_machine" "vm_windows" {
       condition     = !var.is_marketplace_image || (var.vm_os_offer != null && var.vm_os_publisher != null && var.vm_os_sku != null)
       error_message = "`var.vm_os_offer`, `vm_os_publisher` and `var.vm_os_sku` are required when `var.is_marketplace_image` is `true`."
     }
+    precondition {
+      condition     = var.nested_data_disks || var.delete_data_disks_on_termination != true
+      error_message = "`var.nested_data_disks` must be `true` when `var.delete_data_disks_on_termination` is `true`, because when you declare data disks via separate managed disk resource, you might want to preserve the data while recreating the vm instance."
+    }
   }
 }
 
+resource "azurerm_managed_disk" "vm_data_disk" {
+  for_each = local.data_disk_map
+
+  create_option          = "Empty"
+  location               = local.location
+  name                   = each.value.name
+  resource_group_name    = var.resource_group_name
+  storage_account_type   = var.data_sa_type
+  disk_encryption_set_id = var.managed_data_disk_encryption_set_id
+  disk_size_gb           = var.data_disk_size_gb
+  tags                   = var.tags
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "vm_data_disk_attachments_linux" {
+  for_each = local.data_disk_map_linux
+
+  caching            = "ReadWrite"
+  lun                = each.value.disk_number
+  managed_disk_id    = azurerm_managed_disk.vm_data_disk[each.key].id
+  virtual_machine_id = azurerm_virtual_machine.vm_linux[each.value.host_number].id
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "vm_data_disk_attachments_windows" {
+  for_each = local.data_disk_map_windows
+
+  caching            = "ReadWrite"
+  lun                = each.value.disk_number
+  managed_disk_id    = azurerm_managed_disk.vm_data_disk[each.key].id
+  virtual_machine_id = azurerm_virtual_machine.vm_windows[each.value.host_number].id
+}
+
+resource "azurerm_managed_disk" "vm_extra_disk" {
+  for_each = local.extra_disk_map
+
+  create_option          = "Empty"
+  location               = local.location
+  name                   = each.value.name
+  resource_group_name    = var.resource_group_name
+  storage_account_type   = var.data_sa_type
+  disk_encryption_set_id = var.managed_data_disk_encryption_set_id
+  disk_size_gb           = each.value.disk_size
+  tags                   = var.tags
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "vm_extra_disk_attachments_linux" {
+  for_each = local.extra_disk_map_linux
+
+  caching            = "ReadWrite"
+  lun                = var.nb_data_disk + each.value.disk_number
+  managed_disk_id    = azurerm_managed_disk.vm_extra_disk[each.key].id
+  virtual_machine_id = azurerm_virtual_machine.vm_linux[each.value.host_number].id
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "vm_extra_disk_attachments_windows" {
+  for_each = local.extra_disk_map_windows
+
+  caching            = "ReadWrite"
+  lun                = var.nb_data_disk + each.value.disk_number
+  managed_disk_id    = azurerm_managed_disk.vm_extra_disk[each.key].id
+  virtual_machine_id = azurerm_virtual_machine.vm_windows[each.value.host_number].id
+}
+
 resource "azurerm_availability_set" "vm" {
-  count = var.zone == null ? 1 : 0
+  count = (var.availability_set_enabled && (var.zone == null)) ? 1 : 0
 
   location                     = local.location
-  name                         = "${var.vm_hostname}-avset"
+  name                         = replace(var.name_template_availability_set, "$${vm_hostname}", var.vm_hostname)
   resource_group_name          = var.resource_group_name
   managed                      = true
   platform_fault_domain_count  = var.as_platform_fault_domain_count
@@ -305,7 +371,7 @@ resource "azurerm_public_ip" "vm" {
 
   allocation_method   = var.allocation_method
   location            = local.location
-  name                = "${var.vm_hostname}-pip-${count.index}"
+  name                = replace(replace(var.name_template_public_ip, "$${vm_hostname}", var.vm_hostname), "$${ip_number}", count.index)
   resource_group_name = var.resource_group_name
   domain_name_label   = element(var.public_ip_dns, count.index)
   sku                 = var.public_ip_sku
@@ -339,7 +405,7 @@ resource "azurerm_network_security_group" "vm" {
   count = var.network_security_group == null ? 1 : 0
 
   location            = local.location
-  name                = "${var.vm_hostname}-nsg"
+  name                = replace(var.name_template_network_security_group, "$${vm_hostname}", var.vm_hostname)
   resource_group_name = var.resource_group_name
   tags                = var.tags
 }
@@ -369,7 +435,7 @@ resource "azurerm_network_interface" "vm" {
   count = var.nb_instances
 
   location                      = local.location
-  name                          = "${var.vm_hostname}-nic-${count.index}"
+  name                          = replace(replace(var.name_template_network_interface, "$${vm_hostname}", var.vm_hostname), "$${host_number}", count.index)
   resource_group_name           = var.resource_group_name
   enable_accelerated_networking = var.enable_accelerated_networking
   tags                          = var.tags
@@ -394,13 +460,11 @@ resource "azurerm_network_interface_security_group_association" "test" {
 resource "azurerm_virtual_machine_extension" "extension" {
   count = var.vm_extension == null ? 0 : var.nb_instances
 
-  name                 = var.vm_extension.name
-  publisher            = var.vm_extension.publisher
-  type                 = var.vm_extension.type
-  type_handler_version = var.vm_extension.type_handler_version
-  virtual_machine_id = (var.is_windows_image || contains(tolist([
-    var.vm_os_simple, var.vm_os_offer
-  ]), "WindowsServer")) ? azurerm_virtual_machine.vm_windows[count.index].id : azurerm_virtual_machine.vm_linux[count.index].id
+  name                        = var.vm_extension.name
+  publisher                   = var.vm_extension.publisher
+  type                        = var.vm_extension.type
+  type_handler_version        = var.vm_extension.type_handler_version
+  virtual_machine_id          = local.is_windows ? azurerm_virtual_machine.vm_windows[count.index].id : azurerm_virtual_machine.vm_linux[count.index].id
   auto_upgrade_minor_version  = var.vm_extension.auto_upgrade_minor_version
   automatic_upgrade_enabled   = var.vm_extension.automatic_upgrade_enabled
   failure_suppression_enabled = var.vm_extension.failure_suppression_enabled
@@ -414,6 +478,46 @@ resource "azurerm_virtual_machine_extension" "extension" {
     content {
       secret_url      = var.vm_extension.protected_settings_from_key_vault.secret_url
       source_vault_id = var.vm_extension.protected_settings_from_key_vault.source_vault_id
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(var.vm_extensions) == 0
+      error_message = "`vm_extensions` cannot be used along with `vm_extension`."
+    }
+  }
+}
+
+resource "azurerm_virtual_machine_extension" "extensions" {
+  # The `sensitive` inside `nonsensitive` is a workaround for https://github.com/terraform-linters/tflint-ruleset-azurerm/issues/229
+  for_each = nonsensitive(sensitive(local.vm_extensions))
+
+  name                        = each.value.value.name
+  publisher                   = each.value.value.publisher
+  type                        = each.value.value.type
+  type_handler_version        = each.value.value.type_handler_version
+  virtual_machine_id          = local.is_windows ? azurerm_virtual_machine.vm_windows[each.value.index].id : azurerm_virtual_machine.vm_linux[each.value.index].id
+  auto_upgrade_minor_version  = each.value.value.auto_upgrade_minor_version
+  automatic_upgrade_enabled   = each.value.value.automatic_upgrade_enabled
+  failure_suppression_enabled = each.value.value.failure_suppression_enabled
+  protected_settings          = each.value.value.protected_settings
+  settings                    = each.value.value.settings
+  tags                        = var.tags
+
+  dynamic "protected_settings_from_key_vault" {
+    for_each = each.value.value.protected_settings_from_key_vault == null ? [] : ["protected_settings_from_key_vault"]
+
+    content {
+      secret_url      = each.value.value.protected_settings_from_key_vault.secret_url
+      source_vault_id = each.value.value.protected_settings_from_key_vault.source_vault_id
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.vm_extension == null
+      error_message = "`vm_extensions` cannot be used along with `vm_extension`."
     }
   }
 }

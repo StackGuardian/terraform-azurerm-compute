@@ -40,6 +40,13 @@ variable "as_platform_update_domain_count" {
   default     = 2
 }
 
+variable "availability_set_enabled" {
+  description = "(Optional) Enable or Disable availability set.  Default is `true` (enabled)."
+  type        = bool
+  nullable    = false
+  default     = true
+}
+
 variable "boot_diagnostics" {
   type        = bool
   description = "(Optional) Enable or Disable boot diagnostics."
@@ -78,7 +85,7 @@ variable "delete_data_disks_on_termination" {
 
 variable "delete_os_disk_on_termination" {
   type        = bool
-  description = "Delete datadisk when machine is terminated."
+  description = "Delete OS disk when machine is terminated."
   default     = false
 }
 
@@ -156,7 +163,73 @@ variable "license_type" {
 variable "location" {
   description = "(Optional) The location in which the resources will be created."
   type        = string
-  default     = ""
+  default     = null
+}
+
+variable "managed_data_disk_encryption_set_id" {
+  description = "(Optional) The disk encryption set ID for the managed data disk attached using the azurerm_virtual_machine_data_disk_attachment resource."
+  type        = string
+  default     = null
+}
+
+variable "name_template_availability_set" {
+  description = "The name template for the availability set. The following replacements are automatically made: `$${vm_hostname}` => `var.vm_hostname`. All other text can be set as desired."
+  type        = string
+  default     = "$${vm_hostname}-avset"
+}
+
+variable "name_template_data_disk" {
+  description = "The name template for the data disks. The following replacements are automatically made: `$${vm_hostname}` => `var.vm_hostname`, `$${host_number}` => 'host index', `$${data_disk_number}` => 'data disk index'. All other text can be set as desired."
+  type        = string
+  default     = "$${vm_hostname}-datadisk-$${host_number}-$${data_disk_number}"
+}
+
+variable "name_template_extra_disk" {
+  description = "The name template for the extra disks. The following replacements are automatically made: `$${vm_hostname}` => `var.vm_hostname`, `$${host_number}` => 'host index', `$${extra_disk_name}` => 'name of extra disk'. All other text can be set as desired."
+  type        = string
+  default     = "$${vm_hostname}-extradisk-$${host_number}-$${extra_disk_name}"
+}
+
+variable "name_template_network_interface" {
+  description = "The name template for the network interface. The following replacements are automatically made: `$${vm_hostname}` => `var.vm_hostname`, `$${host_number}` => 'host index'. All other text can be set as desired."
+  type        = string
+  default     = "$${vm_hostname}-nic-$${host_number}"
+}
+
+variable "name_template_network_security_group" {
+  description = "The name template for the network security group. The following replacements are automatically made: `$${vm_hostname}` => `var.vm_hostname`. All other text can be set as desired."
+  type        = string
+  default     = "$${vm_hostname}-nsg"
+}
+
+variable "name_template_public_ip" {
+  description = "The name template for the public ip. The following replacements are automatically made: `$${vm_hostname}` => `var.vm_hostname`, `$${ip_number}` => 'public ip index'. All other text can be set as desired."
+  type        = string
+  default     = "$${vm_hostname}-pip-$${ip_number}"
+}
+
+variable "name_template_vm_linux" {
+  description = "The name template for the Linux virtual machine. The following replacements are automatically made: `$${vm_hostname}` => `var.vm_hostname`, `$${host_number}` => 'host index'. All other text can be set as desired."
+  type        = string
+  default     = "$${vm_hostname}-vmLinux-$${host_number}"
+}
+
+variable "name_template_vm_linux_os_disk" {
+  description = "The name template for the Linux VM OS disk. The following replacements are automatically made: `$${vm_hostname}` => `var.vm_hostname`, `$${host_number}` => 'host index'. All other text can be set as desired."
+  type        = string
+  default     = "osdisk-$${vm_hostname}-$${host_number}"
+}
+
+variable "name_template_vm_windows" {
+  description = "The name template for the Windows virtual machine. The following replacements are automatically made: `$${vm_hostname}` => `var.vm_hostname`, `$${host_number}` => 'host index'. All other text can be set as desired."
+  type        = string
+  default     = "$${vm_hostname}-vmWindows-$${host_number}"
+}
+
+variable "name_template_vm_windows_os_disk" {
+  description = "The name template for the Windows VM OS disk. The following replacements are automatically made: `$${vm_hostname}` => `var.vm_hostname`, `$${host_number}` => 'host index'. All other text can be set as desired."
+  type        = string
+  default     = "$${vm_hostname}-osdisk-$${host_number}"
 }
 
 variable "nb_data_disk" {
@@ -175,6 +248,13 @@ variable "nb_public_ip" {
   description = "Number of public IPs to assign corresponding to one IP per vm. Set to 0 to not assign any public IP addresses."
   type        = number
   default     = 1
+}
+
+variable "nested_data_disks" {
+  description = "(Optional) When `true`, use nested data disks directly attached to the VM.  When `false`, use azurerm_virtual_machine_data_disk_attachment resource to attach the data disks after the VM is created.  Default is `true`."
+  type        = bool
+  nullable    = false
+  default     = true
 }
 
 variable "network_security_group" {
@@ -253,7 +333,7 @@ variable "tags" {
 }
 
 variable "vm_extension" {
-  description = "Argument to create `azurerm_virtual_machine_extension` resource, the argument descriptions could be found at [the document](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_extension)."
+  description = "(Deprecated) This variable has been superseded by the `vm_extensions`. Argument to create `azurerm_virtual_machine_extension` resource, the argument descriptions could be found at [the document](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_extension)."
   type = object({
     name                        = string
     publisher                   = string
@@ -271,6 +351,41 @@ variable "vm_extension" {
   })
   default   = null
   sensitive = true # Because `protected_settings` is sensitive
+}
+
+variable "vm_extensions" {
+  description = "Argument to create `azurerm_virtual_machine_extension` resource, the argument descriptions could be found at [the document](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_extension)."
+  type = set(object({
+    name                        = string
+    publisher                   = string
+    type                        = string
+    type_handler_version        = string
+    auto_upgrade_minor_version  = optional(bool)
+    automatic_upgrade_enabled   = optional(bool)
+    failure_suppression_enabled = optional(bool, false)
+    settings                    = optional(string)
+    protected_settings          = optional(string)
+    protected_settings_from_key_vault = optional(object({
+      secret_url      = string
+      source_vault_id = string
+    }))
+  }))
+  # tflint-ignore: terraform_sensitive_variable_no_default
+  default   = []
+  nullable  = false
+  sensitive = true # Because `protected_settings` is sensitive
+  validation {
+    condition = length(var.vm_extensions) == length(distinct([
+      for e in var.vm_extensions : e.type
+    ]))
+    error_message = "`type` in `vm_extensions` must be unique."
+  }
+  validation {
+    condition = length(var.vm_extensions) == length(distinct([
+      for e in var.vm_extensions : e.name
+    ]))
+    error_message = "`name` in `vm_extensions` must be unique."
+  }
 }
 
 variable "vm_hostname" {
