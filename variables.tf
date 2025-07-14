@@ -80,13 +80,13 @@ variable "data_sa_type" {
 variable "delete_data_disks_on_termination" {
   type        = bool
   description = "Delete data disks when machine is terminated."
-  default     = false
+  default     = true
 }
 
 variable "delete_os_disk_on_termination" {
   type        = bool
   description = "Delete OS disk when machine is terminated."
-  default     = false
+  default     = true
 }
 
 variable "enable_accelerated_networking" {
